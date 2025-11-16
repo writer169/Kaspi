@@ -1,16 +1,2 @@
 requests==2.31.0
 beautifulsoup4==4.12.2
-
-# .env.example (для локальной разработки)
-KASPI_URL=https://kaspi.kz/shop/p/ehrmann-puding-vanil-bezlaktoznyi-1-5-200-g-102110634/?c=750000000
-EMAIL_FROM=your_email@gmail.com
-EMAIL_TO=recipient@gmail.com
-EMAIL_PASSWORD=your_app_password
-API_KEY=your_secret_key_here
-SEND_EMAIL=true
-
-# .gitignore
-.env
-__pycache__/
-*.pyc
-.vercel
