@@ -77,25 +77,36 @@ def check_with_scraper_api():
         return {"success": False, "logs": logs, "error": "ScraperAPI key not configured"}
     
     try:
-        # ScraperAPI автоматически обходит блокировки, captcha и rate limits
-        api_url = "http://api.scraperapi.com"
+        # ScraperAPI автоматически обходит блокировки
+        api_url = "https://api.scraperapi.com"  # Используем HTTPS!
         
         params = {
             "api_key": SCRAPER_API_KEY,
             "url": KASPI_URL,
-            "render": "false",  # Для экономии credits можно не рендерить JS
-            "country_code": "kz"  # Запрос из Казахстана
+            "render": "false",
+            "country_code": "kz"
         }
         
         logs.append(log_message(f"Отправляем запрос через ScraperAPI..."))
+        logs.append(log_message(f"API Key (первые 10 символов): {SCRAPER_API_KEY[:10]}..."))
         logs.append(log_message(f"Target URL: {KASPI_URL}"))
         
         response = requests.get(api_url, params=params, timeout=60)
         logs.append(log_message(f"Статус: {response.status_code}"))
         
+        if response.status_code == 403:
+            logs.append(log_message("⚠️ Ошибка 403 - проблема с API ключом", "ERROR"))
+            logs.append(log_message("Возможные причины:", "ERROR"))
+            logs.append(log_message("1. Неправильный API ключ в SCRAPER_API_KEY", "ERROR"))
+            logs.append(log_message("2. Закончились credits на аккаунте", "ERROR"))
+            logs.append(log_message("3. API ключ не активирован", "ERROR"))
+            logs.append(log_message("Проверьте: https://dashboard.scraperapi.com/", "ERROR"))
+            return {"success": False, "logs": logs, "error": "Invalid ScraperAPI key or no credits"}
+        
         if response.status_code != 200:
-            logs.append(log_message(f"ScraperAPI вернул ошибку: {response.status_code}", "ERROR"))
-            return {"success": False, "logs": logs, "error": f"ScraperAPI error: {response.status_code}"}
+            error_text = response.text[:200] if response.text else "No error message"
+            logs.append(log_message(f"ScraperAPI error: {error_text}", "ERROR"))
+            return {"success": False, "logs": logs, "error": f"ScraperAPI returned {response.status_code}"}
         
         logs.append(log_message("✅ Страница успешно получена"))
         logs.append(log_message("Парсим HTML..."))
