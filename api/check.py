@@ -77,18 +77,18 @@ def check_with_scraper_api():
         return {"success": False, "logs": logs, "error": "ScraperAPI key not configured"}
     
     try:
-        # ScraperAPI автоматически обходит блокировки
-        api_url = "https://api.scraperapi.com"  # Используем HTTPS!
+        # ScraperAPI - используем только бесплатные параметры!
+        api_url = "https://api.scraperapi.com"
         
+        # Только базовые параметры для FREE плана
         params = {
             "api_key": SCRAPER_API_KEY,
-            "url": KASPI_URL,
-            "render": "false",
-            "country_code": "kz"
+            "url": KASPI_URL
+            # НЕ используем: render, country_code, premium_proxy и др.
         }
         
-        logs.append(log_message(f"Отправляем запрос через ScraperAPI..."))
-        logs.append(log_message(f"API Key (первые 10 символов): {SCRAPER_API_KEY[:10]}..."))
+        logs.append(log_message(f"Отправляем запрос через ScraperAPI (FREE plan)..."))
+        logs.append(log_message(f"API Key preview: {SCRAPER_API_KEY[:10]}***"))
         logs.append(log_message(f"Target URL: {KASPI_URL}"))
         
         response = requests.get(api_url, params=params, timeout=60)
@@ -96,19 +96,23 @@ def check_with_scraper_api():
         
         if response.status_code == 403:
             logs.append(log_message("⚠️ Ошибка 403 - проблема с API ключом", "ERROR"))
-            logs.append(log_message("Возможные причины:", "ERROR"))
-            logs.append(log_message("1. Неправильный API ключ в SCRAPER_API_KEY", "ERROR"))
-            logs.append(log_message("2. Закончились credits на аккаунте", "ERROR"))
-            logs.append(log_message("3. API ключ не активирован", "ERROR"))
-            logs.append(log_message("Проверьте: https://dashboard.scraperapi.com/", "ERROR"))
+            logs.append(log_message("Проверьте:", "ERROR"))
+            logs.append(log_message("1. Правильность API ключа", "ERROR"))
+            logs.append(log_message("2. Наличие credits в аккаунте", "ERROR"))
+            logs.append(log_message("3. https://dashboard.scraperapi.com/", "ERROR"))
             return {"success": False, "logs": logs, "error": "Invalid ScraperAPI key or no credits"}
         
+        if response.status_code == 422:
+            logs.append(log_message("⚠️ Ошибка 422 - некорректный запрос", "ERROR"))
+            return {"success": False, "logs": logs, "error": "Invalid request parameters"}
+        
         if response.status_code != 200:
-            error_text = response.text[:200] if response.text else "No error message"
+            error_text = response.text[:300] if response.text else "No error message"
             logs.append(log_message(f"ScraperAPI error: {error_text}", "ERROR"))
             return {"success": False, "logs": logs, "error": f"ScraperAPI returned {response.status_code}"}
         
         logs.append(log_message("✅ Страница успешно получена"))
+        logs.append(log_message(f"Размер ответа: {len(response.text)} байт"))
         logs.append(log_message("Парсим HTML..."))
         
         soup = BeautifulSoup(response.text, "html.parser")
@@ -117,13 +121,37 @@ def check_with_scraper_api():
         data_block = soup.find("script", {"type": "application/ld+json"})
         
         if not data_block:
-            logs.append(log_message("JSON-блок не найден", "WARNING"))
-            # Пробуем альтернативный метод - ищем в meta тегах
-            title = soup.find("meta", {"property": "og:title"})
-            if title:
-                logs.append(log_message(f"Найден title: {title.get('content', 'N/A')}"))
+            logs.append(log_message("JSON-блок не найден, пробуем альтернативные методы...", "WARNING"))
             
-            return {"success": False, "logs": logs, "error": "JSON block not found"}
+            # Альтернатива 1: Meta теги
+            title = soup.find("meta", {"property": "og:title"})
+            price_meta = soup.find("meta", {"property": "product:price:amount"})
+            
+            if title:
+                product_name = title.get("content", "Неизвестный товар")
+                logs.append(log_message(f"Найден товар через meta: {product_name}"))
+                
+                # Пробуем найти информацию о наличии
+                availability_text = "Неизвестно"
+                # Ищем кнопку "Купить" или текст "В наличии"
+                buy_button = soup.find("button", {"data-role": "add-to-cart"})
+                if buy_button:
+                    availability_text = "В наличии"
+                    in_stock = True
+                else:
+                    in_stock = False
+                
+                return {
+                    "success": True,
+                    "in_stock": in_stock,
+                    "product_name": product_name,
+                    "price": price_meta.get("content") if price_meta else "Не указана",
+                    "availability": availability_text,
+                    "method": "scraperapi-meta",
+                    "logs": logs
+                }
+            
+            return {"success": False, "logs": logs, "error": "Could not find product data"}
         
         logs.append(log_message("JSON-блок найден, парсим..."))
         data = json.loads(data_block.text)
@@ -156,7 +184,7 @@ def check_with_scraper_api():
         }
         
     except requests.exceptions.Timeout:
-        logs.append(log_message("Таймаут запроса к ScraperAPI", "ERROR"))
+        logs.append(log_message("Таймаут запроса к ScraperAPI (60 сек)", "ERROR"))
         return {"success": False, "logs": logs, "error": "ScraperAPI timeout"}
     except json.JSONDecodeError as e:
         logs.append(log_message(f"Ошибка парсинга JSON: {str(e)}", "ERROR"))
